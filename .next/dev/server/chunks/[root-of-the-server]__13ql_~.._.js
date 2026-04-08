@@ -442,10 +442,11 @@ async function POST(request) {
         const toolUseBlocks = response.content.filter((block)=>block.type === 'tool_use');
         const toolResults = [];
         for (const toolUse of toolUseBlocks){
-            const result = await executeTool(toolUse.name, toolUse.input);
+            const { id, name, input } = toolUse;
+            const result = await executeTool(name, input);
             toolResults.push({
                 type: 'tool_result',
-                tool_use_id: toolUse.id,
+                tool_use_id: id,
                 content: result
             });
         }

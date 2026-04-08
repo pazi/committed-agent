@@ -146,16 +146,16 @@ export async function POST(request: Request) {
 
   while (response.stop_reason === 'tool_use') {
     const toolUseBlocks = response.content.filter(
-      (block): block is Anthropic.ContentBlockParam & { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> } =>
-        block.type === 'tool_use',
+      (block) => block.type === 'tool_use',
     );
 
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
     for (const toolUse of toolUseBlocks) {
-      const result = await executeTool(toolUse.name, toolUse.input);
+      const { id, name, input } = toolUse as { id: string; name: string; input: Record<string, unknown> };
+      const result = await executeTool(name, input);
       toolResults.push({
         type: 'tool_result',
-        tool_use_id: toolUse.id,
+        tool_use_id: id,
         content: result,
       });
     }
