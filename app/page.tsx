@@ -112,13 +112,17 @@ export default function Home() {
       });
 
       const data = await res.json();
-      const assistantMessage: Message = { role: 'assistant', content: data.content };
-      setMessages([...newMessages, assistantMessage]);
-      setCanvasContent(data.content);
-    } catch {
+      if (data.error) {
+        setMessages([...newMessages, { role: 'assistant', content: `Fout: ${data.error}` }]);
+      } else {
+        const assistantMessage: Message = { role: 'assistant', content: data.content };
+        setMessages([...newMessages, assistantMessage]);
+        setCanvasContent(data.content);
+      }
+    } catch (err) {
       setMessages([
         ...newMessages,
-        { role: 'assistant', content: 'Er ging iets mis. Probeer het opnieuw.' },
+        { role: 'assistant', content: `Fout: ${err instanceof Error ? err.message : 'Onbekende fout'}` },
       ]);
     } finally {
       setLoading(false);

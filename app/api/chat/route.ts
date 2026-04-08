@@ -128,52 +128,57 @@ interface ChatMessage {
 }
 
 export async function POST(request: Request) {
-  const { messages } = (await request.json()) as { messages: ChatMessage[] };
+  try {
+    const { messages } = (await request.json()) as { messages: ChatMessage[] };
 
-  const anthropicMessages: Anthropic.MessageParam[] = messages.map((m) => ({
-    role: m.role,
-    content: m.content,
-  }));
+    const anthropicMessages: Anthropic.MessageParam[] = messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
 
-  // Agentic loop: blijf tool calls afhandelen tot Claude een tekst-antwoord geeft
-  let response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 4096,
-    system: SYSTEM_PROMPT,
-    tools,
-    messages: anthropicMessages,
-  });
-
-  while (response.stop_reason === 'tool_use') {
-    const toolUseBlocks = response.content.filter(
-      (block) => block.type === 'tool_use',
-    );
-
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const toolUse of toolUseBlocks) {
-      const { id, name, input } = toolUse as { id: string; name: string; input: Record<string, unknown> };
-      const result = await executeTool(name, input);
-      toolResults.push({
-        type: 'tool_result',
-        tool_use_id: id,
-        content: result,
-      });
-    }
-
-    anthropicMessages.push({ role: 'assistant', content: response.content });
-    anthropicMessages.push({ role: 'user', content: toolResults });
-
-    response = await anthropic.messages.create({
+    let response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
       tools,
       messages: anthropicMessages,
     });
+
+    while (response.stop_reason === 'tool_use') {
+      const toolUseBlocks = response.content.filter(
+        (block) => block.type === 'tool_use',
+      );
+
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      for (const toolUse of toolUseBlocks) {
+        const { id, name, input } = toolUse as { id: string; name: string; input: Record<string, unknown> };
+        const result = await executeTool(name, input);
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: id,
+          content: result,
+        });
+      }
+
+      anthropicMessages.push({ role: 'assistant', content: response.content });
+      anthropicMessages.push({ role: 'user', content: toolResults });
+
+      response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
+        tools,
+        messages: anthropicMessages,
+      });
+    }
+
+    const textBlock = response.content.find((b) => b.type === 'text');
+    const text = textBlock && 'text' in textBlock ? textBlock.text : '';
+
+    return Response.json({ role: 'assistant', content: text });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('Chat API error:', message);
+    return Response.json({ error: message }, { status: 500 });
   }
-
-  const textBlock = response.content.find((b) => b.type === 'text');
-  const text = textBlock && 'text' in textBlock ? textBlock.text : '';
-
-  return Response.json({ role: 'assistant', content: text });
 }
