@@ -3,14 +3,18 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import Link from 'next/link';
 
+interface UserTenant {
+  id: string;
+  name: string;
+}
+
 interface User {
   id: string;
   email: string;
   full_name: string;
   role: 'admin' | 'manager' | 'client';
   is_active: boolean;
-  tenant_id: string;
-  tenants: { name: string } | null;
+  tenants: UserTenant[];
   created_at: string;
 }
 
@@ -45,9 +49,11 @@ export default function UsersPage() {
   const [newName, setNewName] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<string>('client');
-  const [newTenantId, setNewTenantId] = useState<string>('');
+  const [newTenantIds, setNewTenantIds] = useState<Set<string>>(new Set());
   const [formError, setFormError] = useState('');
   const [formLoading, setFormLoading] = useState(false);
+
+  const isAllTenantsRole = (role: string) => role === 'admin' || role === 'manager';
 
   async function fetchUsers() {
     const res = await fetch('/api/admin/users');
@@ -62,19 +68,34 @@ export default function UsersPage() {
 
   async function fetchTenants() {
     const res = await fetch('/api/admin/tenants');
-    if (res.ok) {
-      const data = await res.json();
-      setTenants(data);
-      if (data.length > 0 && !newTenantId) setNewTenantId(data[0].id);
-    }
+    if (res.ok) setTenants(await res.json());
   }
 
   useEffect(() => { fetchUsers(); fetchTenants(); }, []);
+
+  function toggleTenant(tenantId: string) {
+    setNewTenantIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(tenantId)) next.delete(tenantId);
+      else next.add(tenantId);
+      return next;
+    });
+  }
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setFormError('');
     setFormLoading(true);
+
+    const tenant_ids = isAllTenantsRole(newRole)
+      ? tenants.map((t) => t.id)
+      : Array.from(newTenantIds);
+
+    if (tenant_ids.length === 0) {
+      setFormError('Selecteer minimaal 1 tenant.');
+      setFormLoading(false);
+      return;
+    }
 
     const res = await fetch('/api/admin/users', {
       method: 'POST',
@@ -84,7 +105,7 @@ export default function UsersPage() {
         full_name: newName,
         password: newPassword,
         role: newRole,
-        tenant_id: newTenantId,
+        tenant_ids,
       }),
     });
 
@@ -94,6 +115,7 @@ export default function UsersPage() {
     } else {
       setShowCreateForm(false);
       setNewEmail(''); setNewName(''); setNewPassword(''); setNewRole('client');
+      setNewTenantIds(new Set());
       fetchUsers();
     }
     setFormLoading(false);
@@ -167,54 +189,83 @@ export default function UsersPage() {
               </div>
             )}
 
-            <form onSubmit={handleCreate} className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Naam</label>
-                <input
-                  type="text" value={newName} onChange={(e) => setNewName(e.target.value)} required
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Volledige naam"
-                />
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Naam</label>
+                  <input
+                    type="text" value={newName} onChange={(e) => setNewName(e.target.value)} required
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Volledige naam"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
+                  <input
+                    type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} required
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="naam@bedrijf.nl"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Wachtwoord</label>
+                  <input
+                    type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Min. 8 tekens"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
+                  <select
+                    value={newRole} onChange={(e) => setNewRole(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="client">Client</option>
+                    <option value="manager">Manager</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
               </div>
+
+              {/* Tenant checkboxes */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
-                <input
-                  type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} required
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="naam@bedrijf.nl"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tenants</label>
+                {isAllTenantsRole(newRole) && (
+                  <p className="text-xs text-gray-400 mb-2">
+                    {newRole === 'admin' ? 'Admins' : 'Managers'} hebben automatisch toegang tot alle tenants.
+                  </p>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  {tenants.map((tenant) => {
+                    const allAccess = isAllTenantsRole(newRole);
+                    const checked = allAccess || newTenantIds.has(tenant.id);
+                    return (
+                      <label
+                        key={tenant.id}
+                        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                          allAccess
+                            ? 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed'
+                            : checked
+                              ? 'bg-blue-50 border-blue-200 text-blue-800 cursor-pointer'
+                              : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={allAccess}
+                          onChange={() => toggleTenant(tenant.id)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-40"
+                        />
+                        <span className={allAccess ? 'opacity-50' : ''}>{tenant.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Wachtwoord</label>
-                <input
-                  type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Min. 8 tekens"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tenant</label>
-                <select
-                  value={newTenantId} onChange={(e) => setNewTenantId(e.target.value)} required
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {tenants.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
-                <select
-                  value={newRole} onChange={(e) => setNewRole(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="client">Client</option>
-                  <option value="manager">Manager</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <div className="flex items-end justify-end gap-3">
+
+              <div className="flex gap-3 justify-end pt-2">
                 <button type="button" onClick={() => setShowCreateForm(false)}
                   className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2.5">
                   Annuleren
@@ -235,7 +286,7 @@ export default function UsersPage() {
               <tr>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Naam</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">E-mail</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Tenant</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Tenants</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Rol</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
                 <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Acties</th>
@@ -246,10 +297,20 @@ export default function UsersPage() {
                 <tr key={user.id} className="border-t border-gray-100 hover:bg-gray-50">
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{user.full_name}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">{user.email}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    <span className="bg-orange-50 text-orange-700 text-xs font-medium px-2.5 py-1 rounded-full">
-                      {user.tenants?.name ?? 'Onbekend'}
-                    </span>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap gap-1">
+                      {user.tenants.length === 0 && (
+                        <span className="text-xs text-gray-400">Geen</span>
+                      )}
+                      {user.tenants.map((t) => (
+                        <span
+                          key={t.id}
+                          className="bg-orange-50 text-orange-700 text-xs font-medium px-2 py-0.5 rounded-full"
+                        >
+                          {t.name}
+                        </span>
+                      ))}
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     {editingUser?.id === user.id ? (
