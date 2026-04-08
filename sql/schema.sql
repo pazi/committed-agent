@@ -166,7 +166,7 @@ create table ad_insights (
   -- Performance metrics
   clicks integer not null default 0,
   spend numeric(12,4) not null default 0,
-  conversions integer not null default 0,
+  conversions numeric(12,4) not null default 0,
   conversion_value numeric(12,4) not null default 0,
 
   -- Video metrics (optioneel)

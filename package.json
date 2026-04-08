@@ -3,22 +3,39 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "import-data": "tsx scripts/import-data.ts",
-    "run-automations": "tsx src/jobs/run-automations.ts"
+    "run-automations": "tsx src/jobs/run-automations.ts",
+    "sync-entities": "tsx scripts/sync-bigquery-to-supabase.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.85.0",
     "@google-cloud/bigquery": "^8.1.1",
+    "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.102.1",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@tailwindcss/typography": "^0.5.19",
     "dotenv": "^17.4.1",
+    "next": "^16.2.2",
+    "postcss": "^8.5.9",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "tailwindcss": "^4.2.2",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/node": "^25.5.2"
+    "@types/node": "^25.5.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
   }
 }
