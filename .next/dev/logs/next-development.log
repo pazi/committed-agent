@@ -126,3 +126,5 @@
 {"timestamp":"01:32:12.903","source":"Browser","level":"WARN","message":"Image with src \"/logo.webp\" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: \"auto\"' or 'height: \"auto\"' to maintain the aspect ratio."}
 {"timestamp":"01:32:12.903","source":"Browser","level":"WARN","message":"Image with src \"/logo.webp\" was detected as the Largest Contentful Paint (LCP). Please add the `loading=\"eager\"` property if this image is above the fold.\nRead more: https://nextjs.org/docs/app/api-reference/components/image#loading"}
 {"timestamp":"01:32:12.903","source":"Browser","level":"WARN","message":"Image with src \"/logo.webp\" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: \"auto\"' or 'height: \"auto\"' to maintain the aspect ratio."}
+{"timestamp":"01:40:45.273","source":"Server","level":"LOG","message":"  Reload env: .env"}
+{"timestamp":"01:40:45.370","source":"Server","level":"LOG","message":"✓ Compiled in 54ms"}
