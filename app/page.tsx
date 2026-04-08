@@ -2,8 +2,10 @@
 
 import { useState, useRef, useEffect, type FormEvent, type ReactNode } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { createClient } from '../src/lib/supabase-browser';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -76,7 +78,18 @@ export default function Home() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [canvasContent, setCanvasContent] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string>('');
+  const [userRole, setUserRole] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const supabase = createClient();
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUserEmail(data.user?.email ?? '');
+      setUserRole(data.user?.user_metadata?.role ?? '');
+    });
+  }, [supabase.auth]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -142,9 +155,25 @@ export default function Home() {
 
       {/* Right: Chat */}
       <div className="w-1/2 flex flex-col bg-white">
-        <header className="border-b border-gray-200 px-6 py-3 h-16 flex flex-col justify-center">
-          <h1 className="text-lg font-semibold text-gray-900">Chat</h1>
-          <p className="text-xs text-gray-500">Stel vragen over je campagnes</p>
+        <header className="border-b border-gray-200 px-6 py-3 h-16 flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-semibold text-gray-900">Chat</h1>
+            <p className="text-xs text-gray-500">Stel vragen over je campagnes</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {userEmail && <span className="text-xs text-gray-400">{userEmail}</span>}
+            {userRole === 'admin' && (
+              <a href="/admin/users" className="text-xs text-blue-600 hover:text-blue-500 font-medium transition-colors">
+                Gebruikers
+              </a>
+            )}
+            <button
+              onClick={async () => { await supabase.auth.signOut(); router.push('/login'); router.refresh(); }}
+              className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Uitloggen
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
