@@ -34,6 +34,7 @@ export default function Setup2FAPage() {
       // Start enrollment
       const { data, error: err } = await supabase.auth.mfa.enroll({
         factorType: 'totp',
+        issuer: 'committed-agent.sonobe.dev',
         friendlyName: `Authenticator ${new Date().toISOString().slice(0, 10)}`,
       });
       if (err) {
