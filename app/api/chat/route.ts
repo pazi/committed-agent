@@ -1,4 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { createClient } from '@supabase/supabase-js';
+import { createClient as createServerClient } from '../../../src/lib/supabase-server';
 import {
   getCampaignPerformance,
   getAdGroupPerformance,
@@ -6,6 +8,11 @@ import {
   getDateTrend,
   type QueryFilters,
 } from '../../../src/services/bigquery.service';
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -19,18 +26,22 @@ BELANGRIJK — Je antwoord wordt op twee plekken getoond:
 
 Structureer je antwoord ALTIJD exact zo:
 
-[Volledige data-analyse met tabellen, KPI's, aanbevelingen — dit verschijnt in het canvas]
+<volledige data-analyse met tabellen, KPI's, aanbevelingen — dit verschijnt in het canvas>
 
 ---
 
-[Hier komt ALLEEN een korte tekst voor de chat, maximaal 1-2 zinnen. Bijvoorbeeld: "De data staat links in het canvas. Wat wil je nu doen?"]
+<korte chat-tekst, max 1-2 zinnen, bijv: "De analyse staat in het canvas. Wat wil je nu doen?">
 
-VERVOLGACTIES:
-- [Actie 1, bijv: "Inzoomen op campagne X"]
-- [Actie 2, bijv: "Device performance bekijken"]
-- [Actie 3, bijv: "Slecht presterende ad groups pauzeren"]
+- <Vervolgactie 1, bijv: Inzoomen op campagne X>
+- <Vervolgactie 2, bijv: Device performance bekijken>
+- <Vervolgactie 3, bijv: Slecht presterende ad groups pauzeren>
 
-De vervolgacties worden als klikbare knoppen getoond. Geef er altijd 2-4.
+Belangrijk over vervolgacties:
+- Schrijf de actie ZONDER vierkante haken eromheen
+- Schrijf de actie ZONDER vraagteken erachter
+- Maak ze direct en imperatief, alsof het een knop is
+- Geef altijd 2-4 vervolgacties
+- Schrijf NIET het woord "VERVOLGACTIES:" of "Vervolgacties:" — alleen de bullets
 
 Richtlijnen voor de analyse:
 - Data bevat een 'platform' kolom — vermeld altijd welk platform bij welke campagne hoort
@@ -40,7 +51,46 @@ Richtlijnen voor de analyse:
 - Prioriteer suggesties op verwachte impact
 - Denk aan: pacing, bereik, performance trends
 - Antwoord altijd in het Nederlands
-- Wees direct en concreet, geen vage adviezen`;
+- Wees direct en concreet, geen vage adviezen
+
+GRAFIEKEN:
+Je kunt grafieken renderen door een markdown code block met taal "chart" te gebruiken. Het is een JSON object:
+
+\`\`\`chart
+{
+  "type": "bar",
+  "title": "Spend per platform",
+  "data": [
+    {"name": "Google Ads", "value": 1234.56},
+    {"name": "Facebook", "value": 567.89}
+  ]
+}
+\`\`\`
+
+Chart types:
+- "bar" — staafdiagram (gebruik xKey + yKeys voor multi-bar, of name+value voor simpel)
+- "line" — lijndiagram (handig voor trends over tijd)
+- "area" — vlakdiagram (zelfde als line maar gevuld)
+- "pie" — taartdiagram (gebruik nameKey + valueKey)
+
+Voorbeelden:
+
+Multi-series bar chart:
+\`\`\`chart
+{"type":"bar","title":"Performance per platform","xKey":"platform","yKeys":["clicks","conversions"],"data":[{"platform":"Google","clicks":120,"conversions":5},{"platform":"Facebook","clicks":80,"conversions":3}]}
+\`\`\`
+
+Trend line:
+\`\`\`chart
+{"type":"line","title":"Spend trend","xKey":"date","yKeys":["spend"],"data":[{"date":"2026-04-01","spend":120},{"date":"2026-04-02","spend":135}]}
+\`\`\`
+
+Pie chart:
+\`\`\`chart
+{"type":"pie","title":"Budget verdeling","nameKey":"name","valueKey":"value","data":[{"name":"Google","value":60},{"name":"Facebook","value":30},{"name":"LinkedIn","value":10}]}
+\`\`\`
+
+Gebruik grafieken proactief om data inzichtelijk te maken — vooral bij vergelijkingen, trends, en verdelingen. Toon eerst de grafiek, dan een korte tekstuele analyse.`;
 
 const tools: Anthropic.Tool[] = [
   {
@@ -196,6 +246,23 @@ export async function POST(request: Request) {
 
     const textBlock = response.content.find((b) => b.type === 'text');
     const text = textBlock && 'text' in textBlock ? textBlock.text : '';
+
+    // Sla Q&A op in chat_history
+    try {
+      const supabase = await createServerClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+        await supabaseAdmin.from('chat_history').insert({
+          user_id: user.id,
+          question: lastUserMessage?.content ?? '',
+          response: text,
+          filters: { accountIds, platforms, dateFrom, dateTo, compareDateFrom, compareDateTo },
+        });
+      }
+    } catch (saveErr) {
+      console.error('Chat history save error:', saveErr);
+    }
 
     return Response.json({ role: 'assistant', content: text });
   } catch (err) {

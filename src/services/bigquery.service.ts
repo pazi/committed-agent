@@ -233,6 +233,156 @@ export function getPlatforms(): PlatformInfo[] {
 }
 
 /**
+ * Account overzicht met aantal campagnes per account.
+ */
+export interface AccountOverview {
+  account_id: string;
+  account_name: string;
+  platform: string;
+  campaign_count: number;
+}
+
+export async function getAccountsWithCounts(): Promise<AccountOverview[]> {
+  const queries = Object.entries(PLATFORM_TABLES).map(([platform, table]) => `
+    SELECT
+      ACCOUNT_ID, ACCOUNT_NAME,
+      '${PLATFORM_LABELS[platform]}' as platform,
+      COUNT(DISTINCT CAMPAIGN_ID) as campaign_count
+    FROM \`${DATASET}.${table}\`
+    GROUP BY ACCOUNT_ID, ACCOUNT_NAME
+  `);
+
+  const query = queries.join('\nUNION ALL\n') + '\nORDER BY ACCOUNT_NAME ASC';
+  const [rows] = await bigquery.query({ query, location: 'EU' });
+
+  return rows.map((r: Record<string, unknown>) => ({
+    account_id: String(r.ACCOUNT_ID),
+    account_name: String(r.ACCOUNT_NAME),
+    platform: String(r.platform),
+    campaign_count: num(r.campaign_count),
+  }));
+}
+
+/**
+ * Platform overzicht met aantal accounts en campagnes per platform.
+ */
+export interface PlatformOverview {
+  id: string;
+  label: string;
+  account_count: number;
+  campaign_count: number;
+}
+
+export async function getPlatformsWithCounts(): Promise<PlatformOverview[]> {
+  const queries = Object.entries(PLATFORM_TABLES).map(([platform, table]) => `
+    SELECT
+      '${platform}' as id,
+      '${PLATFORM_LABELS[platform]}' as label,
+      COUNT(DISTINCT ACCOUNT_ID) as account_count,
+      COUNT(DISTINCT CAMPAIGN_ID) as campaign_count
+    FROM \`${DATASET}.${table}\`
+  `);
+
+  const query = queries.join('\nUNION ALL\n') + '\nORDER BY label ASC';
+  const [rows] = await bigquery.query({ query, location: 'EU' });
+
+  return rows.map((r: Record<string, unknown>) => ({
+    id: String(r.id),
+    label: String(r.label),
+    account_count: num(r.account_count),
+    campaign_count: num(r.campaign_count),
+  }));
+}
+
+/**
+ * Geaggregeerde totals voor een entity (account, platform, of beide).
+ */
+export interface AggregatedStats {
+  impressions: number;
+  clicks: number;
+  cost: number;
+  conversions: number;
+  conversion_value: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  roas: number;
+  cost_per_conversion: number;
+}
+
+export async function getAggregatedStats(filters: QueryFilters & { days?: number }): Promise<AggregatedStats> {
+  const days = filters.days ?? 30;
+  const union = platformUnion('', filters);
+  if (!union) {
+    return { impressions: 0, clicks: 0, cost: 0, conversions: 0, conversion_value: 0, ctr: 0, cpc: 0, cpm: 0, roas: 0, cost_per_conversion: 0 };
+  }
+
+  const query = `
+    SELECT
+      SUM(IMPRESSIONS) as impressions,
+      SUM(CLICKS) as clicks,
+      SUM(COST) as cost,
+      SUM(CONVERSIONS) as conversions,
+      SUM(CONVERSION_VALUE) as conversion_value
+    FROM (${union})
+  `;
+
+  const [rows] = await bigquery.query({ query, params: { days }, location: 'EU' });
+  const r = rows[0] ?? {};
+  const base = {
+    impressions: num(r.impressions),
+    clicks: num(r.clicks),
+    cost: num(r.cost),
+    conversions: num(r.conversions),
+    conversion_value: num(r.conversion_value),
+  };
+  return {
+    ...base,
+    ...computeMetrics(base),
+    cost_per_conversion: base.conversions > 0 ? base.cost / base.conversions : 0,
+  };
+}
+
+/**
+ * Dagelijkse trend data zonder campaign filter (voor account/platform detail).
+ */
+export async function getOverallDateTrend(filters: QueryFilters & { days?: number }): Promise<DatePerformance[]> {
+  const days = filters.days ?? 30;
+  const union = platformUnion('', filters);
+  if (!union) return [];
+
+  const query = `
+    SELECT
+      DATE,
+      SUM(IMPRESSIONS) as impressions,
+      SUM(CLICKS) as clicks,
+      SUM(COST) as cost,
+      SUM(CONVERSIONS) as conversions,
+      SUM(CONVERSION_VALUE) as conversion_value
+    FROM (${union})
+    GROUP BY DATE
+    ORDER BY DATE ASC
+  `;
+
+  const [rows] = await bigquery.query({ query, params: { days }, location: 'EU' });
+  return rows.map((r: Record<string, unknown>) => {
+    const base = {
+      date: parseBQDate(r.DATE),
+      impressions: num(r.impressions),
+      clicks: num(r.clicks),
+      cost: num(r.cost),
+      conversions: num(r.conversions),
+      conversion_value: num(r.conversion_value),
+    };
+    return {
+      ...base,
+      ctr: base.impressions > 0 ? base.clicks / base.impressions : 0,
+      cpc: base.clicks > 0 ? base.cost / base.clicks : 0,
+    };
+  });
+}
+
+/**
  * Haal alle beschikbare accounts op, per platform.
  */
 export async function getAccounts(): Promise<AccountInfo[]> {

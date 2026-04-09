@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useRef, useEffect, type FormEvent, type ReactNode } from 'react';
+import { useState, useRef, useEffect, type FormEvent } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { createClient } from '../src/lib/supabase-browser';
+import { Sidebar } from './components/Sidebar';
+import { ChatMarkdown } from './components/ChatMarkdown';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -48,10 +48,13 @@ function MultiSelect({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const allSelected = selected.size === options.length;
+  const allSelected = selected.size === options.length && options.length > 0;
+  const noneSelected = selected.size === 0;
   const displayLabel = allSelected
     ? `Alle ${label.toLowerCase()}`
-    : `${selected.size}/${options.length} ${label.toLowerCase()}`;
+    : noneSelected
+      ? `Selecteer ${label.toLowerCase()}`
+      : `${selected.size}/${options.length} ${label.toLowerCase()}`;
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -66,9 +69,11 @@ function MultiSelect({
       <button
         onClick={() => setOpen(!open)}
         className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-          allSelected
-            ? 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-            : 'bg-blue-50 border-blue-200 text-blue-700'
+          noneSelected
+            ? 'bg-white border-dashed border-gray-300 text-gray-400 hover:bg-gray-50'
+            : allSelected
+              ? 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+              : 'bg-blue-50 border-blue-200 text-blue-700'
         }`}
       >
         <span>{displayLabel}</span>
@@ -112,65 +117,6 @@ function MultiSelect({
 }
 
 // ============================================
-// Canvas markdown renderer
-// ============================================
-
-function CanvasMarkdown({ content }: { content: string }) {
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        h2: ({ children }: { children?: ReactNode }) => (
-          <h2 className="text-lg font-bold text-gray-900 mt-6 mb-3 pb-2 border-b border-gray-200 first:mt-0">{children}</h2>
-        ),
-        h3: ({ children }: { children?: ReactNode }) => (
-          <div className="bg-white border border-gray-200 rounded-xl p-4 mt-4 mb-2 shadow-sm">
-            <h3 className="text-sm font-semibold text-gray-800">{children}</h3>
-          </div>
-        ),
-        p: ({ children }: { children?: ReactNode }) => (
-          <p className="text-sm text-gray-700 leading-relaxed mb-3">{children}</p>
-        ),
-        ul: ({ children }: { children?: ReactNode }) => (
-          <ul className="space-y-1.5 mb-4 ml-1">{children}</ul>
-        ),
-        ol: ({ children }: { children?: ReactNode }) => (
-          <ol className="space-y-1.5 mb-4 ml-1 list-decimal list-inside">{children}</ol>
-        ),
-        li: ({ children }: { children?: ReactNode }) => (
-          <li className="text-sm text-gray-700 flex gap-2">
-            <span className="text-blue-500 mt-0.5">&#8226;</span>
-            <span>{children}</span>
-          </li>
-        ),
-        strong: ({ children }: { children?: ReactNode }) => (
-          <strong className="font-semibold text-gray-900">{children}</strong>
-        ),
-        table: ({ children }: { children?: ReactNode }) => (
-          <div className="overflow-x-auto my-4 border border-gray-200 rounded-xl shadow-sm">
-            <table className="w-full text-sm">{children}</table>
-          </div>
-        ),
-        thead: ({ children }: { children?: ReactNode }) => (
-          <thead className="bg-gray-50 border-b border-gray-200">{children}</thead>
-        ),
-        th: ({ children }: { children?: ReactNode }) => (
-          <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">{children}</th>
-        ),
-        td: ({ children }: { children?: ReactNode }) => (
-          <td className="px-4 py-2.5 text-sm text-gray-700 border-t border-gray-100">{children}</td>
-        ),
-        tr: ({ children }: { children?: ReactNode }) => (
-          <tr className="hover:bg-gray-50 transition-colors">{children}</tr>
-        ),
-      }}
-    >
-      {content}
-    </ReactMarkdown>
-  );
-}
-
-// ============================================
 // Main page
 // ============================================
 
@@ -199,9 +145,49 @@ export default function Home() {
   );
   const [compareDateTo, setCompareDateTo] = useState(defaultDateFrom);
 
+  // Resizable chat panel
+  const [chatWidth, setChatWidth] = useState(900);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const supabase = createClient();
+
+  useEffect(() => {
+    const stored = localStorage.getItem('chat-width');
+    if (stored) setChatWidth(Number(stored));
+    const collapsed = localStorage.getItem('chat-collapsed');
+    if (collapsed === 'true') setChatCollapsed(true);
+  }, []);
+
+  function toggleChatCollapsed() {
+    const next = !chatCollapsed;
+    setChatCollapsed(next);
+    localStorage.setItem('chat-collapsed', String(next));
+  }
+
+  useEffect(() => {
+    if (!isDragging) return;
+    function onMove(e: MouseEvent) {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const newWidth = rect.right - e.clientX;
+      const clamped = Math.max(500, Math.min(900, newWidth));
+      setChatWidth(clamped);
+    }
+    function onUp() {
+      setIsDragging(false);
+      localStorage.setItem('chat-width', String(chatWidth));
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [isDragging, chatWidth]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -209,14 +195,8 @@ export default function Home() {
       setUserRole(data.user?.user_metadata?.role ?? '');
     });
     fetch('/api/accounts').then(r => r.json()).then((data) => {
-      if (data.accounts) {
-        setAccounts(data.accounts);
-        setSelectedAccountIds(new Set(data.accounts.map((a: Account) => a.account_id)));
-      }
-      if (data.platforms) {
-        setPlatforms(data.platforms);
-        setSelectedPlatformIds(new Set(data.platforms.map((p: Platform) => p.id)));
-      }
+      if (data.accounts) setAccounts(data.accounts);
+      if (data.platforms) setPlatforms(data.platforms);
     });
   }, [supabase.auth]);
 
@@ -226,17 +206,18 @@ export default function Home() {
 
   function toggleInSet(set: Set<string>, id: string): Set<string> {
     const next = new Set(set);
-    if (next.has(id)) {
-      if (next.size > 1) next.delete(id);
-    } else {
-      next.add(id);
-    }
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     return next;
   }
 
   function resetChat() {
     setMessages([]);
-    setCanvasContent(null);
+    setSelectedAccountIds(new Set());
+    setSelectedPlatformIds(new Set());
+    setDateFrom(defaultDateFrom);
+    setDateTo(defaultDateTo);
+    setCompareEnabled(false);
   }
 
   async function sendMessage(text: string) {
@@ -305,67 +286,61 @@ export default function Home() {
   );
   const noDataWarning = accounts.length > 0 && !hasDataForCombi;
 
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
+  }
+
   return (
     <div className="flex h-screen">
-      {/* Left: Canvas */}
-      <div className="w-1/2 border-r border-gray-200 flex flex-col bg-gray-50/50">
-        <header className="border-b border-gray-200 bg-white px-6 py-3 h-16 flex items-center justify-center">
-          <Image src="/logo.webp" alt="TCA Logo" width={180} height={40} className="invert" />
-        </header>
-        <div className="flex-1 overflow-y-auto p-6">
-          {canvasContent ? (
-            <CanvasMarkdown content={canvasContent} />
-          ) : (
-            <div className="flex items-center justify-center h-full text-gray-400">
-              <div className="text-center">
-                <svg className="mx-auto h-12 w-12 mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                <p className="text-sm">Adviezen en data verschijnen hier</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      <Sidebar userEmail={userEmail} userRole={userRole} onSignOut={handleSignOut} />
 
-      {/* Right: Chat */}
-      <div className="w-1/2 flex flex-col bg-white">
-        {/* Header */}
-        <header className="border-b border-gray-200 px-6 py-3 h-16 flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-semibold text-gray-900">Chat</h1>
-            <p className="text-xs text-gray-500">Stel vragen over je campagnes</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {userEmail && <span className="text-xs text-gray-400">{userEmail}</span>}
-            {userRole === 'admin' && (
-              <a href="/admin/users" className="text-xs text-blue-600 hover:text-blue-500 font-medium transition-colors">
-                Gebruikers
-              </a>
+      <div ref={containerRef} className={`flex flex-1 min-w-0 ${isDragging ? 'select-none cursor-col-resize' : ''}`}>
+        {/* Canvas */}
+        <div className="flex-1 flex flex-col bg-gray-50/50 min-w-0">
+          <div className="flex-1 overflow-y-auto p-6">
+            {canvasContent ? (
+              <ChatMarkdown content={canvasContent} />
+            ) : (
+              <div className="flex items-center justify-center h-full text-gray-400">
+                <div className="text-center">
+                  <svg className="mx-auto h-12 w-12 mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  <p className="text-sm">Adviezen en data verschijnen hier</p>
+                </div>
+              </div>
             )}
-            <button
-              onClick={async () => { await supabase.auth.signOut(); router.push('/login'); router.refresh(); }}
-              className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
-            >
-              Uitloggen
-            </button>
           </div>
-        </header>
+        </div>
+
+        {/* Resizer + collapse handle */}
+        <div className="relative shrink-0 group">
+          {!chatCollapsed && (
+            <div
+              onMouseDown={() => setIsDragging(true)}
+              className="w-1 h-full bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors"
+            />
+          )}
+          {chatCollapsed && <div className="w-1 h-full bg-gray-200" />}
+          <button
+            onClick={toggleChatCollapsed}
+            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 bg-white border border-gray-200 hover:border-blue-400 hover:text-blue-500 rounded-full w-6 h-6 flex items-center justify-center text-gray-400 shadow-sm transition-colors z-10"
+            title={chatCollapsed ? 'Chat tonen' : 'Chat verbergen'}
+          >
+            <svg className={`h-3.5 w-3.5 transition-transform ${chatCollapsed ? '' : 'rotate-180'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Chat */}
+        {!chatCollapsed && (
+        <div style={{ width: chatWidth }} className="flex flex-col bg-white shrink-0">
 
         {/* Filter bar */}
-        <div className="border-b border-gray-200 px-6 py-2 flex items-center gap-2">
-          {messages.length > 0 && (
-            <button
-              onClick={resetChat}
-              className="text-gray-400 hover:text-gray-600 transition-colors shrink-0 mr-1"
-              title="Nieuwe chat"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-          )}
-
+        <div className="border-b border-gray-200 px-4 py-2 flex flex-wrap items-center gap-2">
           {uniqueAccounts.length > 0 && (
             <MultiSelect
               label="Accounts"
@@ -373,7 +348,7 @@ export default function Home() {
               selected={selectedAccountIds}
               onToggle={(id) => setSelectedAccountIds(toggleInSet(selectedAccountIds, id))}
               onSelectAll={() => setSelectedAccountIds(new Set(uniqueAccounts.map(a => a.id)))}
-              onDeselectAll={() => setSelectedAccountIds(new Set([uniqueAccounts[0]?.id].filter(Boolean)))}
+              onDeselectAll={() => setSelectedAccountIds(new Set())}
             />
           )}
 
@@ -384,7 +359,7 @@ export default function Home() {
               selected={selectedPlatformIds}
               onToggle={(id) => setSelectedPlatformIds(toggleInSet(selectedPlatformIds, id))}
               onSelectAll={() => setSelectedPlatformIds(new Set(platforms.map(p => p.id)))}
-              onDeselectAll={() => setSelectedPlatformIds(new Set([platforms[0]?.id].filter(Boolean)))}
+              onDeselectAll={() => setSelectedPlatformIds(new Set())}
             />
           )}
 
@@ -415,6 +390,15 @@ export default function Home() {
               Vergelijk
             </button>
           </div>
+
+          {messages.length > 0 && (
+            <button
+              onClick={resetChat}
+              className="text-xs text-gray-500 hover:text-gray-700 transition-colors ml-1"
+            >
+              Reset chat
+            </button>
+          )}
         </div>
 
         {/* Compare date range */}
@@ -479,54 +463,60 @@ export default function Home() {
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-start gap-2">
-                  <div
-                    className="max-w-[90%] rounded-2xl px-4 py-2.5 bg-gray-100 text-gray-900 cursor-pointer hover:bg-gray-200 transition-colors"
-                    onClick={() => setCanvasContent(msg.content)}
-                  >
-                    <div className="text-sm leading-relaxed">
-                      {(() => {
-                        const parts = msg.content.split('---');
-                        if (parts.length <= 1) return 'De analyse staat in het canvas.';
-                        const chatPart = parts[parts.length - 1];
-                        const lines = chatPart.split('\n').filter(l => {
-                          const t = l.trim();
-                          return t && !t.startsWith('- ') && !t.startsWith('VERVOLGACTIES') && !/^(Wil je|Zal ik|Moet ik|Kan ik|Laten we)/i.test(t);
-                        });
-                        return lines.join(' ').trim() || 'De analyse staat in het canvas.';
-                      })()}
-                    </div>
-                    <p className="text-xs text-blue-600 mt-1.5 font-medium">Volledige analyse in canvas &larr;</p>
-                  </div>
-                  {(() => {
-                    const parts = msg.content.split('---');
-                    if (parts.length <= 1) return null;
-                    const chatPart = parts[parts.length - 1];
-                    const lines = chatPart.split('\n').map(l => l.trim()).filter(Boolean);
-                    const actions: string[] = [];
-                    for (const line of lines) {
-                      if (line.startsWith('- ')) {
-                        actions.push(line.replace(/^- /, ''));
-                      } else if (/^(Wil je|Zal ik|Moet ik|Kan ik|Laten we)/i.test(line)) {
-                        actions.push(line.replace(/\?$/, ''));
-                      }
+                (() => {
+                  const parts = msg.content.split('---');
+                  const hasAnalysis = parts.length > 1;
+                  const chatPart = hasAnalysis ? parts[parts.length - 1] : msg.content;
+                  const summaryLines = chatPart.split('\n').filter(l => {
+                    const t = l.trim();
+                    return t
+                      && !t.startsWith('- ')
+                      && !/^vervolgacties/i.test(t.replace(/\*/g, ''))
+                      && !/^(Wil je|Zal ik|Moet ik|Kan ik|Laten we)/i.test(t);
+                  });
+                  const summary = summaryLines.join(' ').trim() || 'De analyse staat in het canvas.';
+
+                  const cleanLabel = (s: string) =>
+                    s.replace(/^\[/, '').replace(/\]$/, '').replace(/\?$/, '').trim();
+
+                  const actions: string[] = [];
+                  for (const line of chatPart.split('\n').map(l => l.trim()).filter(Boolean)) {
+                    if (line.startsWith('- ')) {
+                      actions.push(cleanLabel(line.replace(/^- /, '')));
+                    } else if (/^(Wil je|Zal ik|Moet ik|Kan ik|Laten we)/i.test(line)) {
+                      actions.push(cleanLabel(line));
                     }
-                    if (actions.length === 0) return null;
-                    return (
-                      <div className="flex flex-wrap gap-2 ml-1">
-                        {actions.map((action) => (
+                  }
+
+                  return (
+                    <div className="flex justify-start">
+                      <div className="max-w-[90%] rounded-2xl px-4 py-3 bg-gray-100 text-gray-900">
+                        {hasAnalysis && (
                           <button
-                            key={action}
-                            onClick={() => sendMessage(action)}
-                            className="px-3 py-1.5 text-xs font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors border border-blue-200"
+                            onClick={() => setCanvasContent(msg.content)}
+                            className="text-xs text-blue-600 hover:text-blue-500 font-medium mb-2 flex items-center gap-1 cursor-pointer"
                           >
-                            {action}
+                            &larr; Bekijk volledige analyse in canvas
                           </button>
-                        ))}
+                        )}
+                        <div className="text-sm leading-relaxed">{summary}</div>
+                        {actions.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {actions.map((action) => (
+                              <button
+                                key={action}
+                                onClick={() => sendMessage(action)}
+                                className="px-3 py-1.5 text-xs font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors border border-blue-200"
+                              >
+                                {action}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    );
-                  })()}
-                </div>
+                    </div>
+                  );
+                })()
               )}
             </div>
           ))}
@@ -568,6 +558,8 @@ export default function Home() {
             </button>
           </div>
         </form>
+      </div>
+        )}
       </div>
     </div>
   );
