@@ -8,7 +8,9 @@
     "start": "next start",
     "import-data": "tsx scripts/import-data.ts",
     "run-automations": "tsx src/jobs/run-automations.ts",
-    "sync-entities": "tsx scripts/sync-bigquery-to-supabase.ts"
+    "sync-entities": "tsx scripts/sync-bigquery-to-supabase.ts",
+    "sync-google-ads": "tsx src/jobs/sync-google-ads.ts",
+    "google-ads:get-refresh-token": "tsx scripts/get-google-ads-refresh-token.ts"
   },
   "keywords": [],
   "author": "",

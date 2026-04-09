@@ -76,6 +76,8 @@ export interface Creative {
   headline?: string;
   body?: string;
   call_to_action?: string;
+  platform?: Platform;
+  external_id?: string;
   created_at: string;
   updated_at: string;
 }

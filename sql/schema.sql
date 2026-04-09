@@ -93,11 +93,19 @@ create table creatives (
   headline text,
   body text,
   call_to_action text,
+  -- Platform referentie voor upsert per externe ad
+  platform text,
+  external_id text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index idx_creatives_tenant on creatives(tenant_id);
+create unique index creatives_tenant_platform_external_uniq
+  on creatives(tenant_id, platform, external_id)
+  where external_id is not null;
+create index idx_creatives_platform on creatives(tenant_id, platform)
+  where platform is not null;
 
 -- --------------------------------------------
 -- 6. Ads (advertenties)
@@ -195,6 +203,76 @@ create index idx_insights_placement on ad_insights(tenant_id, placement) where p
 create index idx_insights_date_range on ad_insights(date, tenant_id);
 
 -- --------------------------------------------
+-- 8a. Creative Assets (asset-level breakdown)
+-- Voor Google Ads RSA / Performance Max assets en
+-- losse onderdelen die binnen één creative rouleren.
+-- --------------------------------------------
+create table creative_assets (
+  id uuid primary key default uuid_generate_v4(),
+  tenant_id uuid not null references tenants(id) on delete cascade,
+  creative_id uuid references creatives(id) on delete cascade,
+
+  platform text,
+  external_id text,
+
+  asset_type text not null, -- headline, long_headline, description, image, video, logo, sitelink, callout
+  content text,
+  url text,
+  thumbnail_url text,
+
+  performance_label text,   -- best, good, low, learning, pending, unrated
+  internal_score numeric(6,4),
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  unique (tenant_id, platform, external_id, asset_type)
+);
+
+create index idx_creative_assets_tenant on creative_assets(tenant_id);
+create index idx_creative_assets_creative on creative_assets(creative_id);
+create index idx_creative_assets_type on creative_assets(tenant_id, asset_type);
+
+-- --------------------------------------------
+-- 8b. Search Terms (zoektermenrapport)
+-- Basis voor negatives, nieuwe keywords en inhoudelijke
+-- targeting suggesties (primair Google Ads).
+-- --------------------------------------------
+create table search_terms (
+  id uuid primary key default uuid_generate_v4(),
+  tenant_id uuid not null references tenants(id) on delete cascade,
+  date date not null,
+  platform text not null,
+
+  account_id uuid references accounts(id) on delete cascade,
+  campaign_id uuid references campaigns(id) on delete cascade,
+  adset_id uuid references adsets(id) on delete cascade,
+
+  search_term text not null,
+  match_type text, -- exact, phrase, broad, dynamic, none
+
+  impressions integer not null default 0,
+  clicks integer not null default 0,
+  spend numeric(12,4) not null default 0,
+  conversions numeric(12,4) not null default 0,
+  conversion_value numeric(12,4) not null default 0,
+
+  status text not null default 'active', -- active, added_as_keyword, added_as_negative, ignored
+  reviewed_at timestamptz,
+  reviewed_by text,
+
+  created_at timestamptz not null default now(),
+
+  unique (tenant_id, date, platform, campaign_id, adset_id, search_term, match_type)
+);
+
+create index idx_search_terms_tenant_date on search_terms(tenant_id, date);
+create index idx_search_terms_campaign on search_terms(campaign_id);
+create index idx_search_terms_adset on search_terms(adset_id);
+create index idx_search_terms_platform on search_terms(tenant_id, platform);
+create index idx_search_terms_status on search_terms(tenant_id, status);
+
+-- --------------------------------------------
 -- 9. Benchmarks
 -- --------------------------------------------
 create table benchmarks (
@@ -278,6 +356,8 @@ alter table ads enable row level security;
 alter table creatives enable row level security;
 alter table audiences enable row level security;
 alter table ad_insights enable row level security;
+alter table creative_assets enable row level security;
+alter table search_terms enable row level security;
 alter table benchmarks enable row level security;
 alter table automation_rules enable row level security;
 alter table automation_logs enable row level security;
