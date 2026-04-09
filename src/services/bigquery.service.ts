@@ -66,25 +66,75 @@ function platformUnion(
     ? `DATE >= '${filters.dateFrom}' AND DATE <= '${filters.dateTo}'`
     : 'DATE >= DATE_SUB(CURRENT_DATE(), INTERVAL @days DAY)';
 
+  // Per-platform kolom mapping (verschillende tabellen hebben verschillende kolomnamen)
+  const platformColumns: Record<string, {
+    adGroupId: string;
+    adGroupName: string;
+    adGroupStatus: string;
+    device: string;
+    cost: string;
+    conversions: string;
+    conversionValue: string;
+  }> = {
+    google_ads: {
+      adGroupId: 'AD_GROUP_ID',
+      adGroupName: 'AD_GROUP_NAME',
+      adGroupStatus: 'AD_GROUP_STATUS',
+      device: 'DEVICE',
+      cost: 'COST',
+      conversions: 'CONVERSIONS',
+      conversionValue: 'CONVERSION_VALUE',
+    },
+    facebook: {
+      adGroupId: 'AD_GROUP_ID',
+      adGroupName: 'AD_GROUP_NAME',
+      adGroupStatus: 'AD_GROUP_STATUS',
+      device: 'IMPRESSION_DEVICE',
+      cost: 'COST',
+      conversions: 'CAST(NULL AS INT64)',
+      conversionValue: 'CONVERSION_VALUE',
+    },
+    linkedin: {
+      // LinkedIn heeft CAMPAIGN_GROUP i.p.v. AD_GROUP
+      adGroupId: 'CAMPAIGN_GROUP_ID',
+      adGroupName: 'CAMPAIGN_GROUP_NAME',
+      adGroupStatus: 'CAST(NULL AS STRING)',
+      device: 'CAST(NULL AS STRING)',
+      cost: 'COST',
+      conversions: 'CONVERSIONS',
+      conversionValue: 'CONVERSION_VALUE',
+    },
+    reddit: {
+      adGroupId: 'CAST(NULL AS STRING)',
+      adGroupName: 'CAST(NULL AS STRING)',
+      adGroupStatus: 'CAST(NULL AS STRING)',
+      device: 'CAST(NULL AS STRING)',
+      cost: 'SPEND',
+      conversions: 'CAST(NULL AS INT64)',
+      conversionValue: 'CAST(NULL AS FLOAT64)',
+    },
+  };
+
   const subqueries = activePlatforms.map(platform => {
     const table = PLATFORM_TABLES[platform];
     const label = PLATFORM_LABELS[platform];
+    const cols = platformColumns[platform];
     return `
       SELECT
         '${label}' as platform,
         ACCOUNT_ID, ACCOUNT_NAME,
         CAMPAIGN_ID, CAMPAIGN_NAME,
         CAST(NULL AS STRING) as CAMPAIGN_STATUS,
-        ${platform === 'google_ads' ? 'AD_GROUP_ID' : platform === 'reddit' ? 'CAST(NULL AS STRING)' : 'AD_GROUP_ID'} as AD_GROUP_ID,
-        ${platform === 'google_ads' ? 'AD_GROUP_NAME' : platform === 'reddit' ? 'CAST(NULL AS STRING)' : 'AD_GROUP_NAME'} as AD_GROUP_NAME,
-        ${platform === 'google_ads' ? 'AD_GROUP_STATUS' : 'CAST(NULL AS STRING)'} as AD_GROUP_STATUS,
-        ${platform === 'google_ads' ? 'DEVICE' : platform === 'facebook' ? 'IMPRESSION_DEVICE' : 'CAST(NULL AS STRING)'} as DEVICE,
+        ${cols.adGroupId} as AD_GROUP_ID,
+        ${cols.adGroupName} as AD_GROUP_NAME,
+        ${cols.adGroupStatus} as AD_GROUP_STATUS,
+        ${cols.device} as DEVICE,
         DATE,
         COALESCE(IMPRESSIONS, 0) as IMPRESSIONS,
         COALESCE(CLICKS, 0) as CLICKS,
-        COALESCE(COST, 0) as COST,
-        ${platform === 'google_ads' ? 'COALESCE(CONVERSIONS, 0)' : '0'} as CONVERSIONS,
-        ${platform === 'google_ads' ? 'COALESCE(CONVERSION_VALUE, 0)' : platform === 'facebook' ? 'COALESCE(CONVERSION_VALUE, 0)' : '0'} as CONVERSION_VALUE
+        COALESCE(${cols.cost}, 0) as COST,
+        COALESCE(${cols.conversions}, 0) as CONVERSIONS,
+        COALESCE(${cols.conversionValue}, 0) as CONVERSION_VALUE
       FROM \`${DATASET}.${table}\`
       WHERE ${dateWhere}
         ${accountFilter(filters?.accountIds)}
