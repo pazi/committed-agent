@@ -12,15 +12,116 @@ interface Message {
   content: string;
 }
 
+interface Account {
+  account_id: string;
+  account_name: string;
+  platform: string;
+}
+
+interface Platform {
+  id: string;
+  label: string;
+}
+
+// ============================================
+// Multi-select dropdown component
+// ============================================
+
+function MultiSelect({
+  label,
+  options,
+  selected,
+  onToggle,
+  onSelectAll,
+  onDeselectAll,
+  getLabel,
+  getId,
+}: {
+  label: string;
+  options: { id: string; label: string }[];
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
+  getLabel?: (o: { id: string; label: string }) => string;
+  getId?: (o: { id: string; label: string }) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const allSelected = selected.size === options.length;
+  const displayLabel = allSelected
+    ? `Alle ${label.toLowerCase()}`
+    : `${selected.size}/${options.length} ${label.toLowerCase()}`;
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+          allSelected
+            ? 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+            : 'bg-blue-50 border-blue-200 text-blue-700'
+        }`}
+      >
+        <span>{displayLabel}</span>
+        <svg className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 min-w-[200px] py-1">
+          <button
+            onClick={() => { allSelected ? onDeselectAll() : onSelectAll(); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50 font-medium"
+          >
+            {allSelected ? 'Deselecteer alle' : 'Selecteer alle'}
+          </button>
+          {options.map((opt) => {
+            const id = getId ? getId(opt) : opt.id;
+            const text = getLabel ? getLabel(opt) : opt.label;
+            return (
+              <label
+                key={id}
+                className={`flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer hover:bg-gray-50 ${
+                  selected.has(id) ? 'text-gray-900' : 'text-gray-400'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(id)}
+                  onChange={() => onToggle(id)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                {text}
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// Canvas markdown renderer
+// ============================================
+
 function CanvasMarkdown({ content }: { content: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
         h2: ({ children }: { children?: ReactNode }) => (
-          <h2 className="text-lg font-bold text-gray-900 mt-6 mb-3 pb-2 border-b border-gray-200 first:mt-0">
-            {children}
-          </h2>
+          <h2 className="text-lg font-bold text-gray-900 mt-6 mb-3 pb-2 border-b border-gray-200 first:mt-0">{children}</h2>
         ),
         h3: ({ children }: { children?: ReactNode }) => (
           <div className="bg-white border border-gray-200 rounded-xl p-4 mt-4 mb-2 shadow-sm">
@@ -54,14 +155,10 @@ function CanvasMarkdown({ content }: { content: string }) {
           <thead className="bg-gray-50 border-b border-gray-200">{children}</thead>
         ),
         th: ({ children }: { children?: ReactNode }) => (
-          <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-            {children}
-          </th>
+          <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">{children}</th>
         ),
         td: ({ children }: { children?: ReactNode }) => (
-          <td className="px-4 py-2.5 text-sm text-gray-700 border-t border-gray-100">
-            {children}
-          </td>
+          <td className="px-4 py-2.5 text-sm text-gray-700 border-t border-gray-100">{children}</td>
         ),
         tr: ({ children }: { children?: ReactNode }) => (
           <tr className="hover:bg-gray-50 transition-colors">{children}</tr>
@@ -73,13 +170,35 @@ function CanvasMarkdown({ content }: { content: string }) {
   );
 }
 
+// ============================================
+// Main page
+// ============================================
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [canvasContent, setCanvasContent] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string>('');
-  const [userRole, setUserRole] = useState<string>('');
+  const [userEmail, setUserEmail] = useState('');
+  const [userRole, setUserRole] = useState('');
+
+  // Filter state
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [platforms, setPlatforms] = useState<Platform[]>([]);
+  const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(new Set());
+  const [selectedPlatformIds, setSelectedPlatformIds] = useState<Set<string>>(new Set());
+
+  // Datum filters (default: laatste 30 dagen)
+  const defaultDateTo = new Date().toISOString().split('T')[0];
+  const defaultDateFrom = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const [dateFrom, setDateFrom] = useState(defaultDateFrom);
+  const [dateTo, setDateTo] = useState(defaultDateTo);
+  const [compareEnabled, setCompareEnabled] = useState(false);
+  const [compareDateFrom, setCompareDateFrom] = useState(
+    new Date(Date.now() - 60 * 86400000).toISOString().split('T')[0]
+  );
+  const [compareDateTo, setCompareDateTo] = useState(defaultDateFrom);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const supabase = createClient();
@@ -89,14 +208,39 @@ export default function Home() {
       setUserEmail(data.user?.email ?? '');
       setUserRole(data.user?.user_metadata?.role ?? '');
     });
+    fetch('/api/accounts').then(r => r.json()).then((data) => {
+      if (data.accounts) {
+        setAccounts(data.accounts);
+        setSelectedAccountIds(new Set(data.accounts.map((a: Account) => a.account_id)));
+      }
+      if (data.platforms) {
+        setPlatforms(data.platforms);
+        setSelectedPlatformIds(new Set(data.platforms.map((p: Platform) => p.id)));
+      }
+    });
   }, [supabase.auth]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  function toggleInSet(set: Set<string>, id: string): Set<string> {
+    const next = new Set(set);
+    if (next.has(id)) {
+      if (next.size > 1) next.delete(id);
+    } else {
+      next.add(id);
+    }
+    return next;
+  }
+
+  function resetChat() {
+    setMessages([]);
+    setCanvasContent(null);
+  }
+
   async function sendMessage(text: string) {
-    if (!text.trim() || loading) return;
+    if (!text.trim() || loading || noDataWarning) return;
 
     const userMessage: Message = { role: 'user', content: text.trim() };
     const newMessages = [...messages, userMessage];
@@ -105,18 +249,31 @@ export default function Home() {
     setLoading(true);
 
     try {
+      const accountIds = selectedAccountIds.size < accounts.length
+        ? Array.from(selectedAccountIds)
+        : undefined;
+      const platformIds = selectedPlatformIds.size < platforms.length
+        ? Array.from(selectedPlatformIds)
+        : undefined;
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages }),
+        body: JSON.stringify({
+          messages: newMessages,
+          accountIds,
+          platforms: platformIds,
+          dateFrom,
+          dateTo,
+          ...(compareEnabled ? { compareDateFrom, compareDateTo } : {}),
+        }),
       });
 
       const data = await res.json();
       if (data.error) {
         setMessages([...newMessages, { role: 'assistant', content: `Fout: ${data.error}` }]);
       } else {
-        const assistantMessage: Message = { role: 'assistant', content: data.content };
-        setMessages([...newMessages, assistantMessage]);
+        setMessages([...newMessages, { role: 'assistant', content: data.content }]);
         setCanvasContent(data.content);
       }
     } catch (err) {
@@ -133,6 +290,20 @@ export default function Home() {
     e.preventDefault();
     sendMessage(input);
   }
+
+  // Dedup accounts voor de dropdown (zelfde account kan in meerdere platforms voorkomen)
+  const uniqueAccounts = Array.from(
+    new Map(accounts.map(a => [a.account_id, a])).values()
+  ).map(a => ({ id: a.account_id, label: a.account_name }));
+
+  // Check of de geselecteerde combi data heeft
+  const platformLabelsToIds: Record<string, string> = {};
+  for (const p of platforms) platformLabelsToIds[p.label] = p.id;
+
+  const hasDataForCombi = accounts.some(
+    a => selectedAccountIds.has(a.account_id) && selectedPlatformIds.has(platformLabelsToIds[a.platform] ?? '')
+  );
+  const noDataWarning = accounts.length > 0 && !hasDataForCombi;
 
   return (
     <div className="flex h-screen">
@@ -159,6 +330,7 @@ export default function Home() {
 
       {/* Right: Chat */}
       <div className="w-1/2 flex flex-col bg-white">
+        {/* Header */}
         <header className="border-b border-gray-200 px-6 py-3 h-16 flex items-center justify-between">
           <div>
             <h1 className="text-lg font-semibold text-gray-900">Chat</h1>
@@ -180,6 +352,102 @@ export default function Home() {
           </div>
         </header>
 
+        {/* Filter bar */}
+        <div className="border-b border-gray-200 px-6 py-2 flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              onClick={resetChat}
+              className="text-gray-400 hover:text-gray-600 transition-colors shrink-0 mr-1"
+              title="Nieuwe chat"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          )}
+
+          {uniqueAccounts.length > 0 && (
+            <MultiSelect
+              label="Accounts"
+              options={[...uniqueAccounts].sort((a, b) => a.label.localeCompare(b.label))}
+              selected={selectedAccountIds}
+              onToggle={(id) => setSelectedAccountIds(toggleInSet(selectedAccountIds, id))}
+              onSelectAll={() => setSelectedAccountIds(new Set(uniqueAccounts.map(a => a.id)))}
+              onDeselectAll={() => setSelectedAccountIds(new Set([uniqueAccounts[0]?.id].filter(Boolean)))}
+            />
+          )}
+
+          {platforms.length > 0 && (
+            <MultiSelect
+              label="Platformen"
+              options={[...platforms].sort((a, b) => a.label.localeCompare(b.label))}
+              selected={selectedPlatformIds}
+              onToggle={(id) => setSelectedPlatformIds(toggleInSet(selectedPlatformIds, id))}
+              onSelectAll={() => setSelectedPlatformIds(new Set(platforms.map(p => p.id)))}
+              onDeselectAll={() => setSelectedPlatformIds(new Set([platforms[0]?.id].filter(Boolean)))}
+            />
+          )}
+
+          {/* Datum filters */}
+          <div className="flex items-center gap-1.5 ml-auto">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <span className="text-xs text-gray-400">—</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={() => setCompareEnabled(!compareEnabled)}
+              className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+                compareEnabled
+                  ? 'bg-purple-50 border-purple-200 text-purple-700'
+                  : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+              }`}
+              title="Vergelijk met andere periode"
+            >
+              Vergelijk
+            </button>
+          </div>
+        </div>
+
+        {/* Compare date range */}
+        {compareEnabled && (
+          <div className="border-b border-gray-200 px-6 py-2 flex items-center gap-2 bg-purple-50/50">
+            <span className="text-xs text-purple-600 font-medium shrink-0">Vergelijk met:</span>
+            <input
+              type="date"
+              value={compareDateFrom}
+              onChange={(e) => setCompareDateFrom(e.target.value)}
+              className="text-xs border border-purple-200 rounded-lg px-2 py-1.5 text-purple-700 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <span className="text-xs text-purple-400">—</span>
+            <input
+              type="date"
+              value={compareDateTo}
+              onChange={(e) => setCompareDateTo(e.target.value)}
+              className="text-xs border border-purple-200 rounded-lg px-2 py-1.5 text-purple-700 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+        )}
+
+        {/* No data warning */}
+        {noDataWarning && (
+          <div className="mx-6 mt-3 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2">
+            <svg className="h-4 w-4 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <p className="text-xs text-amber-800">Geen data beschikbaar voor deze combinatie van accounts en platformen. Pas je filters aan.</p>
+          </div>
+        )}
+
+        {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {messages.length === 0 && (
             <div className="text-center text-gray-400 mt-24">
@@ -188,7 +456,7 @@ export default function Home() {
                 {[
                   'Geef me een overzicht van alle campagnes',
                   'Welke campagnes presteren het slechtst?',
-                  'Analyseer de device performance',
+                  'Vergelijk de platformen met elkaar',
                 ].map((suggestion) => (
                   <button
                     key={suggestion}
@@ -230,7 +498,6 @@ export default function Home() {
                     </div>
                     <p className="text-xs text-blue-600 mt-1.5 font-medium">Volledige analyse in canvas &larr;</p>
                   </div>
-                  {/* Vervolgactie knoppen */}
                   {(() => {
                     const parts = msg.content.split('---');
                     if (parts.length <= 1) return null;
@@ -281,6 +548,7 @@ export default function Home() {
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Input */}
         <form onSubmit={handleSubmit} className="border-t border-gray-200 px-6 py-4">
           <div className="flex gap-3">
             <input
@@ -293,7 +561,7 @@ export default function Home() {
             />
             <button
               type="submit"
-              disabled={loading || !input.trim()}
+              disabled={loading || !input.trim() || noDataWarning}
               className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl px-5 py-3 text-sm font-medium transition-colors"
             >
               Verstuur

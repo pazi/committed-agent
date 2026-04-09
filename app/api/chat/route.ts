@@ -4,11 +4,12 @@ import {
   getAdGroupPerformance,
   getDevicePerformance,
   getDateTrend,
+  type QueryFilters,
 } from '../../../src/services/bigquery.service';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const SYSTEM_PROMPT = `Je bent een ervaren online marketing specialist en campagne-optimalisatie expert. Je werkt voor een marketingbureau en helpt campagnemanagers met het optimaliseren van Google Ads campagnes.
+const SYSTEM_PROMPT = `Je bent een ervaren online marketing specialist en campagne-optimalisatie expert. Je werkt voor een marketingbureau en helpt campagnemanagers met het optimaliseren van online advertising campagnes over meerdere platformen (Google Ads, Facebook Ads, LinkedIn Ads, Reddit Ads).
 
 Je hebt toegang tot live campagnedata via tools. Gebruik deze tools om data op te halen voordat je advies geeft.
 
@@ -32,6 +33,7 @@ VERVOLGACTIES:
 De vervolgacties worden als klikbare knoppen getoond. Geef er altijd 2-4.
 
 Richtlijnen voor de analyse:
+- Data bevat een 'platform' kolom — vermeld altijd welk platform bij welke campagne hoort
 - Bereken en toon altijd relevante KPI's: CTR, CPC, CPM, ROAS
 - Gebruik markdown tabellen voor overzichten
 - Identificeer slecht presterende onderdelen en geef concrete actie-suggesties
@@ -43,7 +45,7 @@ Richtlijnen voor de analyse:
 const tools: Anthropic.Tool[] = [
   {
     name: 'get_campaigns',
-    description: 'Haal een overzicht op van alle campagnes met geaggregeerde performance metrics (impressions, clicks, cost, conversions, CTR, CPC, CPM, ROAS). Standaard over de afgelopen 30 dagen.',
+    description: 'Haal een overzicht op van alle campagnes met geaggregeerde performance metrics (impressions, clicks, cost, conversions, CTR, CPC, CPM, ROAS). Data bevat campagnes van alle actieve platformen (Google Ads, Facebook, LinkedIn, Reddit). Standaard over de afgelopen 30 dagen.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -90,16 +92,19 @@ const tools: Anthropic.Tool[] = [
   },
 ];
 
+let activeFilters: QueryFilters = {};
+
 async function executeTool(name: string, input: Record<string, unknown>): Promise<string> {
   switch (name) {
     case 'get_campaigns': {
-      const data = await getCampaignPerformance((input.days as number) ?? 30);
+      const data = await getCampaignPerformance((input.days as number) ?? 30, activeFilters);
       return JSON.stringify(data, null, 2);
     }
     case 'get_adgroup_performance': {
       const data = await getAdGroupPerformance(
         input.campaign_id as string,
         (input.days as number) ?? 30,
+        activeFilters,
       );
       return JSON.stringify(data, null, 2);
     }
@@ -107,6 +112,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       const data = await getDevicePerformance(
         input.campaign_id as string,
         (input.days as number) ?? 30,
+        activeFilters,
       );
       return JSON.stringify(data, null, 2);
     }
@@ -114,6 +120,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       const data = await getDateTrend(
         input.campaign_id as string,
         (input.days as number) ?? 30,
+        activeFilters,
       );
       return JSON.stringify(data, null, 2);
     }
@@ -129,17 +136,32 @@ interface ChatMessage {
 
 export async function POST(request: Request) {
   try {
-    const { messages } = (await request.json()) as { messages: ChatMessage[] };
+    const { messages, accountIds, platforms, dateFrom, dateTo, compareDateFrom, compareDateTo } = (await request.json()) as {
+      messages: ChatMessage[];
+      accountIds?: string[];
+      platforms?: string[];
+      dateFrom?: string;
+      dateTo?: string;
+      compareDateFrom?: string;
+      compareDateTo?: string;
+    };
+
+    activeFilters = { accountIds, platforms, dateFrom, dateTo };
 
     const anthropicMessages: Anthropic.MessageParam[] = messages.map((m) => ({
       role: m.role,
       content: m.content,
     }));
 
+    // Context over actieve filters meegeven
+    let filterContext = '';
+    if (dateFrom && dateTo) filterContext += `\nActieve datumrange: ${dateFrom} t/m ${dateTo}.`;
+    if (compareDateFrom && compareDateTo) filterContext += `\nVergelijkingsperiode: ${compareDateFrom} t/m ${compareDateTo}. Als de gebruiker vraagt om data, haal dan BEIDE periodes op en vergelijk ze.`;
+
     let response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
-      system: SYSTEM_PROMPT,
+      system: SYSTEM_PROMPT + filterContext,
       tools,
       messages: anthropicMessages,
     });
