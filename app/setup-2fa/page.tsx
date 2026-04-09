@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { createClient } from '../../src/lib/supabase-browser';
@@ -14,8 +14,11 @@ export default function Setup2FAPage() {
   const [verifyCode, setVerifyCode] = useState('');
   const [error, setError] = useState('');
   const [verifying, setVerifying] = useState(false);
+  const initStarted = useRef(false);
 
   useEffect(() => {
+    if (initStarted.current) return;
+    initStarted.current = true;
     async function init() {
       // Check of user al 2FA heeft → redirect naar home
       const { data: factors } = await supabase.auth.mfa.listFactors();
