@@ -53,6 +53,26 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // 2FA kan uitgezet worden via env var (handig voor localhost)
+  const mfaDisabled = process.env.NEXT_PUBLIC_DISABLE_MFA === 'true';
+
+  if (!mfaDisabled) {
+    // 2FA verplicht maar nog niet voltooid voor deze sessie → terug naar login
+    const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aalData?.currentLevel === 'aal1' && aalData?.nextLevel === 'aal2') {
+      const loginUrl = new URL('/login', request.url);
+      return NextResponse.redirect(loginUrl);
+    }
+  }
+
+  // /setup-2fa is alleen voor users zonder 2FA
+  if (pathname === '/setup-2fa') {
+    if (mfaDisabled) {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+    return response;
+  }
+
   // Ingelogd en op login pagina → redirect naar home
   if (pathname === '/login') {
     return NextResponse.redirect(new URL('/', request.url));

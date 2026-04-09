@@ -4,6 +4,7 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '../../../src/lib/supabase-browser';
 import { Sidebar } from '../../components/Sidebar';
+import { TwoFactorSetup } from '../../components/TwoFactorSetup';
 
 interface UserTenant {
   id: string;
@@ -285,24 +286,25 @@ export default function UsersPage() {
                         </button>
                       )}
                     </div>
-                    {isAllTenantsRole(newRole) && (
-                      <p className="text-xs text-gray-400 mb-2">{newRole === 'admin' ? 'Admins' : 'Managers'} hebben automatisch toegang tot alle accounts.</p>
+                    {isAllTenantsRole(newRole) ? (
+                      <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+                        {newRole === 'admin' ? 'Admins' : 'Managers'} hebben automatisch toegang tot alle accounts.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        {tenants.map((tenant) => {
+                          const checked = newTenantIds.has(tenant.id);
+                          return (
+                            <label key={tenant.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors ${
+                              checked ? 'bg-blue-50 border-blue-200 text-blue-800'
+                              : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+                              <input type="checkbox" checked={checked} onChange={() => toggleTenant(tenant.id)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                              <span>{tenant.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     )}
-                    <div className="grid grid-cols-2 gap-2">
-                      {tenants.map((tenant) => {
-                        const allAccess = isAllTenantsRole(newRole);
-                        const checked = allAccess || newTenantIds.has(tenant.id);
-                        return (
-                          <label key={tenant.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm transition-colors ${
-                            allAccess ? 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed'
-                            : checked ? 'bg-blue-50 border-blue-200 text-blue-800 cursor-pointer'
-                            : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer'}`}>
-                            <input type="checkbox" checked={checked} disabled={allAccess} onChange={() => toggleTenant(tenant.id)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-40" />
-                            <span className={allAccess ? 'opacity-50' : ''}>{tenant.name}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
                   </div>
                   <div className="flex gap-3 justify-end pt-2">
                     <button type="button" onClick={() => setShowCreateForm(false)} className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2.5">Annuleren</button>
@@ -458,7 +460,7 @@ function EditUserModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Gebruiker bewerken</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -492,27 +494,31 @@ function EditUserModal({
                 </button>
               )}
             </div>
-            {isAllTenantsRole(role) && (
-              <p className="text-xs text-gray-400 mb-2">{role === 'admin' ? 'Admins' : 'Managers'} hebben automatisch toegang tot alle accounts.</p>
+            {isAllTenantsRole(role) ? (
+              <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+                {role === 'admin' ? 'Admins' : 'Managers'} hebben automatisch toegang tot alle accounts.
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                {tenants.map(t => {
+                  const checked = tenantIds.has(t.id);
+                  return (
+                    <label key={t.id} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer ${
+                      checked ? 'bg-blue-50 border-blue-200 text-blue-800'
+                      : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleTenant(t.id)} className="rounded border-gray-300 text-blue-600" />
+                      <span>{t.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
             )}
-            <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
-              {tenants.map(t => {
-                const allAccess = isAllTenantsRole(role);
-                const checked = allAccess || tenantIds.has(t.id);
-                return (
-                  <label key={t.id} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs ${
-                    allAccess ? 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed'
-                    : checked ? 'bg-blue-50 border-blue-200 text-blue-800 cursor-pointer'
-                    : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer'}`}>
-                    <input type="checkbox" checked={checked} disabled={allAccess} onChange={() => toggleTenant(t.id)} className="rounded border-gray-300 text-blue-600" />
-                    <span className={allAccess ? 'opacity-50' : ''}>{t.name}</span>
-                  </label>
-                );
-              })}
-            </div>
           </div>
           {isCurrentUser && (
-            <div className="border-t border-gray-200 pt-4">
+            <div className="border-t border-gray-200 pt-4 space-y-4">
+              <TwoFactorSetup />
+
+              <div className="border-t border-gray-200 pt-4">
               {!showPasswordSection ? (
                 <button
                   type="button"
@@ -570,6 +576,7 @@ function EditUserModal({
                   </div>
                 </div>
               )}
+              </div>
             </div>
           )}
 

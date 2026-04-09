@@ -3,7 +3,8 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { createClient } from '../../src/lib/supabase-browser';
 
 interface NavItem {
   label: string;
@@ -73,12 +74,26 @@ export function Sidebar({
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
+  const supabase = createClient();
 
   useEffect(() => {
     const stored = localStorage.getItem('sidebar-collapsed');
     if (stored !== null) setCollapsed(stored === 'true');
     setMounted(true);
   }, []);
+
+  // 2FA enforcement: als user geen verified factor heeft → forceer setup
+  // Wordt overgeslagen als NEXT_PUBLIC_DISABLE_MFA=true
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_DISABLE_MFA === 'true') return;
+    supabase.auth.mfa.listFactors().then(({ data }) => {
+      const verified = data?.totp?.find(f => f.status === 'verified');
+      if (!verified) {
+        router.replace('/setup-2fa');
+      }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleCollapsed() {
     const next = !collapsed;
