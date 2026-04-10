@@ -8,6 +8,11 @@ import {
   getDateTrend,
   type QueryFilters,
 } from '../../../src/services/bigquery.service';
+import {
+  getCreativeAssetsByCampaign,
+  getSearchTermsByCampaign,
+  getCampaignCreativeSummary,
+} from '../../../src/services/supabase-creatives.service';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -90,7 +95,25 @@ Pie chart:
 {"type":"pie","title":"Budget verdeling","nameKey":"name","valueKey":"value","data":[{"name":"Google","value":60},{"name":"Facebook","value":30},{"name":"LinkedIn","value":10}]}
 \`\`\`
 
-Gebruik grafieken proactief om data inzichtelijk te maken — vooral bij vergelijkingen, trends, en verdelingen. Toon eerst de grafiek, dan een korte tekstuele analyse.`;
+Gebruik grafieken proactief om data inzichtelijk te maken — vooral bij vergelijkingen, trends, en verdelingen. Toon eerst de grafiek, dan een korte tekstuele analyse.
+
+CREATIVE CONTENT ANALYSE:
+Je hebt ook toegang tot creative content data (headlines, descriptions, assets) en zoektermen. Gebruik deze tools wanneer de gebruiker vraagt over:
+- Advertentieteksten, headlines, descriptions, uitingen
+- Creative performance, welke assets goed/slecht presteren
+- Zoektermen, search queries, negatieve keywords
+
+Performance labels interpreteren:
+- BEST = top performer, behouden en meer inzetten
+- GOOD = solide, geen actie nodig
+- LOW = slecht presterend, vervangen of pauzeren
+- LEARNING = te nieuw om te beoordelen, afwachten
+- PENDING/UNRATED = onvoldoende data
+
+Bij verbetervoorstellen:
+- Toon altijd de huidige tekst en je voorgestelde verbetering (before/after)
+- Leg uit WAAROM de verbetering beter zou zijn (specifiek, niet vaag)
+- Baseer suggesties op performance data, niet op gevoel`;
 
 const tools: Anthropic.Tool[] = [
   {
@@ -140,6 +163,40 @@ const tools: Anthropic.Tool[] = [
       required: ['campaign_id'],
     },
   },
+  {
+    name: 'get_creative_content',
+    description: 'Haal creative assets op (headlines, descriptions, images, videos) voor een campagne uit Supabase, inclusief performance labels van het platform. Gebruik dit om advertentieteksten te analyseren en verbetervoorstellen te doen.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        campaign_id: { type: 'string', description: 'Het Supabase campaign UUID' },
+      },
+      required: ['campaign_id'],
+    },
+  },
+  {
+    name: 'get_search_terms',
+    description: 'Haal zoektermen op voor een campagne met performance data (impressions, clicks, spend, conversions). Handig om negatieve keywords te identificeren of nieuwe keyword-kansen te vinden.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        campaign_id: { type: 'string', description: 'Het Supabase campaign UUID' },
+        days: { type: 'number', description: 'Aantal dagen terug (standaard 30)' },
+      },
+      required: ['campaign_id'],
+    },
+  },
+  {
+    name: 'get_creative_summary',
+    description: 'Haal een compacte samenvatting op van alle creatives en assets voor een campagne. Geeft een leesbaar overzicht in plaats van ruwe data — handig als startpunt voor analyse.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        campaign_id: { type: 'string', description: 'Het Supabase campaign UUID' },
+      },
+      required: ['campaign_id'],
+    },
+  },
 ];
 
 let activeFilters: QueryFilters = {};
@@ -173,6 +230,21 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         activeFilters,
       );
       return JSON.stringify(data, null, 2);
+    }
+    case 'get_creative_content': {
+      const data = await getCreativeAssetsByCampaign(input.campaign_id as string);
+      return JSON.stringify(data, null, 2);
+    }
+    case 'get_search_terms': {
+      const data = await getSearchTermsByCampaign(
+        input.campaign_id as string,
+        (input.days as number) ?? 30,
+      );
+      return JSON.stringify(data, null, 2);
+    }
+    case 'get_creative_summary': {
+      const summary = await getCampaignCreativeSummary(input.campaign_id as string);
+      return summary;
     }
     default:
       return JSON.stringify({ error: `Onbekende tool: ${name}` });

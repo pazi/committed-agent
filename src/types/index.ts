@@ -235,6 +235,34 @@ export type MetricName =
   | 'ctr' | 'cpc' | 'cpm' | 'conversion_rate' | 'roas' | 'cost_per_conversion';
 
 // ============================================
+// Suggestions
+// ============================================
+
+export interface Suggestion {
+  id: string;
+  tenant_id: string;
+  campaign_id?: string;
+  creative_id?: string;
+  type: SuggestionType;
+  current_value?: string;
+  suggested_value?: string;
+  reasoning: string;
+  status: SuggestionStatus;
+  priority: SuggestionPriority;
+  created_at: string;
+  reviewed_at?: string;
+  reviewed_by?: string;
+  metadata?: Record<string, unknown>;
+  // Joined fields
+  campaign_name?: string;
+  creative_name?: string;
+}
+
+export type SuggestionType = 'headline_change' | 'description_change' | 'pause_ad' | 'add_negative_keyword' | 'new_headline' | 'new_description';
+export type SuggestionStatus = 'pending' | 'accepted' | 'rejected' | 'applied';
+export type SuggestionPriority = 'high' | 'medium' | 'low';
+
+// ============================================
 // Supermetrics raw input
 // ============================================
 

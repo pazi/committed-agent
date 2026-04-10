@@ -253,12 +253,13 @@ export function mapAd(ad: GoogleAdsAd, tenant_id: string): MappedAd {
   const assets: CreativeAssetUpsert[] = [];
 
   if (ad.headlines) {
-    for (const h of ad.headlines) {
-      if (!h.asset_id) continue;
+    for (let i = 0; i < ad.headlines.length; i++) {
+      const h = ad.headlines[i];
       assets.push({
         tenant_id,
         platform: PLATFORM,
-        external_id: h.asset_id,
+        // Gebruik asset_id als beschikbaar, anders genereer een stabiel ID
+        external_id: h.asset_id ?? `${ad.ad_id}_h${i}`,
         asset_type: 'headline',
         content: h.text,
         performance_label: mapPerformanceLabel(h.performance_label),
@@ -268,12 +269,12 @@ export function mapAd(ad: GoogleAdsAd, tenant_id: string): MappedAd {
   }
 
   if (ad.descriptions) {
-    for (const d of ad.descriptions) {
-      if (!d.asset_id) continue;
+    for (let i = 0; i < ad.descriptions.length; i++) {
+      const d = ad.descriptions[i];
       assets.push({
         tenant_id,
         platform: PLATFORM,
-        external_id: d.asset_id,
+        external_id: d.asset_id ?? `${ad.ad_id}_d${i}`,
         asset_type: 'description',
         content: d.text,
         performance_label: mapPerformanceLabel(d.performance_label),

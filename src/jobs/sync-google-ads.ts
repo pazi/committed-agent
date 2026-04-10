@@ -161,16 +161,21 @@ export async function syncGoogleAds(
   const ads = await client.getAds({ customer_id, date_range });
   const mappedAds = ads.map((ad) => mapAd(ad, tenant_id));
 
-  // 5a. Creatives upsert
-  const creativeInputs = mappedAds.map((m) => ({
+  // 5a. Creatives upsert — deduplicate op external_id (dezelfde ad komt
+  //     meerdere keren terug als de date range meerdere dagen bevat)
+  const creativeMap = new Map<string, typeof mappedAds[0]['creative']>();
+  for (const m of mappedAds) {
+    creativeMap.set(m.creative.external_id, m.creative);
+  }
+  const creativeInputs = [...creativeMap.values()].map((c) => ({
     tenant_id,
     platform: PLATFORM,
-    external_id: m.creative.external_id,
-    name: m.creative.name,
-    type: m.creative.type,
-    headline: m.creative.headline,
-    body: m.creative.body,
-    call_to_action: m.creative.call_to_action,
+    external_id: c.external_id,
+    name: c.name,
+    type: c.type,
+    headline: c.headline,
+    body: c.body,
+    call_to_action: c.call_to_action,
   }));
   const creativeRows = await upsert(
     'creatives',
@@ -183,8 +188,9 @@ export async function syncGoogleAds(
   }
   console.log(`  ✓ Creatives: ${creativeRows.length}`);
 
-  // 5b. Ads upsert (met creative_id)
-  const adInputs = mappedAds
+  // 5b. Ads upsert (met creative_id) — deduplicate op external_id
+  const adDedup = new Map<string, NonNullable<typeof adInputsRaw[0]>>();
+  const adInputsRaw = mappedAds
     .map((m) => {
       const adset_id = adsetIdMap.get(m.ad.external_adgroup_id);
       const creative_id = m.ad.external_creative_id
@@ -205,6 +211,15 @@ export async function syncGoogleAds(
       };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
+  for (const ad of adInputsRaw) {
+    const key = `${ad.adset_id}:${ad.external_id}`;
+    // Bewaar de versie met creative_id als die er is
+    const existing = adDedup.get(key);
+    if (!existing || (!existing.creative_id && ad.creative_id)) {
+      adDedup.set(key, ad);
+    }
+  }
+  const adInputs = [...adDedup.values()];
 
   const adRows = await upsert('ads', adInputs, 'adset_id,external_id');
   console.log(`  ✓ Ads: ${adRows.length}`);
@@ -216,7 +231,12 @@ export async function syncGoogleAds(
   );
   const allAssets = [...inlineAssets, ...standaloneAssets];
 
-  const assetInputs = allAssets.map((a) => ({
+  // Deduplicate assets op (external_id, asset_type)
+  const assetDedup = new Map<string, (typeof allAssets)[0]>();
+  for (const a of allAssets) {
+    assetDedup.set(`${a.external_id}:${a.asset_type}`, a);
+  }
+  const assetInputs = [...assetDedup.values()].map((a) => ({
     tenant_id,
     platform: PLATFORM,
     external_id: a.external_id,
