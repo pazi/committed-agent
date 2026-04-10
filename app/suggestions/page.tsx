@@ -95,7 +95,7 @@ export default function SuggestionsPage() {
       <Sidebar userEmail={userEmail} userRole={userRole} onSignOut={handleSignOut} />
 
       <div className="flex-1 overflow-y-auto bg-gray-50/50">
-        <div className="max-w-4xl mx-auto p-8">
+        <div className="max-w-7xl mx-auto p-8">
           <header className="mb-6">
             <h1 className="text-2xl font-semibold text-gray-900">Suggesties</h1>
             <p className="text-sm text-gray-500 mt-1">

@@ -10,6 +10,7 @@
     "run-automations": "tsx src/jobs/run-automations.ts",
     "sync-entities": "tsx scripts/sync-bigquery-to-supabase.ts",
     "sync-google-ads": "tsx src/jobs/sync-google-ads.ts",
+    "generate-suggestions": "tsx src/jobs/generate-suggestions.ts",
     "google-ads:get-refresh-token": "tsx scripts/get-google-ads-refresh-token.ts"
   },
   "keywords": [],

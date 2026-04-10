@@ -166,7 +166,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
       <Sidebar userEmail={userEmail} userRole={userRole} onSignOut={handleSignOut} />
 
       <div className="flex-1 overflow-y-auto bg-gray-50/50">
-        <div className="max-w-5xl mx-auto p-8">
+        <div className="max-w-7xl mx-auto p-8">
           {/* back link */}
           <Link
             href="/campaigns"
